@@ -26,8 +26,8 @@ DOMAIN="${DOMAIN:-tennis.${IP//./-}.sslip.io}"
 
 say "Βασικά πακέτα"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq git curl ca-certificates openssl nginx >/dev/null
+apt-get -o DPkg::Lock::Timeout=600 update -qq
+apt-get -o DPkg::Lock::Timeout=600 install -y -qq git curl ca-certificates openssl nginx >/dev/null
 
 # Node.js: χρησιμοποιούμε το υπάρχον αν είναι αρκετά νέο, αλλιώς βάζουμε δικό μας στο /opt (χωρίς να αλλάξουμε το σύστημα)
 NODE_BIN=""
@@ -47,7 +47,7 @@ echo "Node $(node -v) από $NODE_BIN"
 # PostgreSQL: χρησιμοποιούμε το υπάρχον, αλλιώς το εγκαθιστούμε
 if ! command -v psql >/dev/null; then
   say "Εγκατάσταση PostgreSQL"
-  apt-get install -y -qq postgresql >/dev/null
+  apt-get -o DPkg::Lock::Timeout=600 install -y -qq postgresql >/dev/null
 fi
 systemctl enable --now postgresql >/dev/null 2>&1 || true
 
@@ -93,9 +93,12 @@ sudo -u "$APP_USER" env PATH="$PATH" bash -c "cd $APP_DIR && node --env-file=.en
 
 ADMIN_PASS=""
 if [ "$FIRST_INSTALL" -eq 1 ]; then
-  ADMIN_PASS="$(openssl rand -base64 12 | tr -d '/+=' | cut -c1-12)"
-  sudo -u "$APP_USER" env PATH="$PATH" bash -c "cd $APP_DIR && node --env-file=.env scripts/create-admin.mjs admin@tennis.local 'Διαχειριστής' '$ADMIN_PASS'"
-  DEMO_PASS="$(openssl rand -base64 9 | tr -d '/+=' | cut -c1-10)"
+  # FIRST_USER_ADMIN=1: δεν φτιάχνουμε admin, γίνεται admin όποιος εγγραφεί πρώτος (για εγκατάσταση χωρίς κονσόλα)
+  if [ "${FIRST_USER_ADMIN:-0}" != "1" ]; then
+    ADMIN_PASS="$(openssl rand -base64 12 | tr -d '/+=' | cut -c1-12)"
+    sudo -u "$APP_USER" env PATH="$PATH" bash -c "cd $APP_DIR && node --env-file=.env scripts/create-admin.mjs admin@tennis.local 'Διαχειριστής' '$ADMIN_PASS'"
+  fi
+  DEMO_PASS="${DEMO_PASSWORD:-$(openssl rand -base64 9 | tr -d '/+=' | cut -c1-10)}"
   sudo -u "$APP_USER" env PATH="$PATH" DEMO_PASSWORD="$DEMO_PASS" bash -c "cd $APP_DIR && node --env-file=.env scripts/seed.mjs"
 fi
 
@@ -143,7 +146,7 @@ nginx -t >/dev/null 2>&1 || { rm -f /etc/nginx/sites-enabled/booking-tennis; die
 systemctl reload nginx
 
 say "Πιστοποιητικό HTTPS"
-command -v certbot >/dev/null || apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
+command -v certbot >/dev/null || apt-get -o DPkg::Lock::Timeout=600 install -y -qq certbot python3-certbot-nginx >/dev/null
 certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect >/dev/null 2>&1 \
   || echo "Το HTTPS δεν στήθηκε ακόμα (μπορεί να φταίει το firewall στη θύρα 80). Το site δουλεύει στο http://$DOMAIN"
 
@@ -159,5 +162,7 @@ if [ -n "$ADMIN_PASS" ]; then
   echo " Κωδικός:     $ADMIN_PASS"
   echo " Demo παίκτες: maria@demo.gr, nikos@demo.gr, eleni@demo.gr / $DEMO_PASS"
   echo " ΣΗΜΕΙΩΣΕ τους κωδικούς τώρα: δεν θα ξαναεμφανιστούν."
+elif [ "$FIRST_INSTALL" -eq 1 ]; then
+  echo " Admin:       όποιος κάνει πρώτος εγγραφή στο site"
 fi
 echo "=================================================================="

@@ -1,0 +1,5 @@
+#cloud-config
+# Επικόλλησε αυτό στο πεδίο "Cloud config" όταν φτιάχνεις νέο server στη Hetzner (Ubuntu 24.04).
+# Η εγκατάσταση γίνεται μόνη της σε ~5 λεπτά. Ο πρώτος που θα εγγραφεί στο site γίνεται admin.
+runcmd:
+  - curl -fsSL https://raw.githubusercontent.com/hliasme-dotcom/Booking-tennis/main/deploy/install.sh | FIRST_USER_ADMIN=1 DEMO_PASSWORD=demo12345 bash > /var/log/booking-tennis-install.log 2>&1

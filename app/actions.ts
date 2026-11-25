@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { pool } from "@/lib/db.ts";
+import { pool, tx } from "@/lib/db.ts";
 import { UserError } from "@/lib/errors.ts";
 import { hashPassword, login, logout, requireAdmin, requireUser, startSession } from "@/lib/auth.ts";
 import { cancelOffer, createOffer, joinOffer, leaveOffer } from "@/lib/offers.ts";
@@ -56,7 +56,17 @@ export async function registerAction(f: FormData) {
       if ((e as { code?: string }).code === "23505") throw new UserError("Υπάρχει ήδη λογαριασμός με αυτό το email");
       throw e;
     }
+    // Νέα εγκατάσταση χωρίς διαχειριστή: ο πρώτος που εγγράφεται γίνεται admin
+    const promoted = await tx(async (c) => {
+      await c.query("SELECT pg_advisory_xact_lock(4242)");
+      const r = await c.query(
+        "UPDATE users SET role='admin' WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM users WHERE role='admin') RETURNING id",
+        [userId],
+      );
+      return !!r.rowCount;
+    });
     await startSession(userId);
+    if (promoted) redirect("/admin?ok=" + encodeURIComponent("Είσαι ο πρώτος χρήστης, οπότε έγινες διαχειριστής."));
     redirect("/me?ok=" + encodeURIComponent("Καλώς ήρθες! Δήλωσε πότε μπορείς να παίξεις."));
   });
 }
